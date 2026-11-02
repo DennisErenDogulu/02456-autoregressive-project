@@ -38,8 +38,20 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint", type=Path, default=ROOT / "results/checkpoints/mlp.pt"
     )
     parser.add_argument("--out", type=Path, default=ROOT / "results/sequences/mlp_samples.csv")
+    parser.add_argument("--train-data", type=Path, default=ROOT / "data/train.csv")
     parser.add_argument("--num-samples", type=positive_int, default=256)
-    parser.add_argument("--max-length", type=positive_int, default=127)
+    parser.add_argument(
+        "--free-length",
+        action="store_true",
+        help="let the model end sequences with its own EOS instead of drawing each "
+        "length from the training set",
+    )
+    parser.add_argument(
+        "--max-length",
+        type=positive_int,
+        default=127,
+        help="cap on sequence length with --free-length",
+    )
     parser.add_argument("--temperature", type=positive_float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
@@ -53,7 +65,12 @@ def sample_sequences(
     max_length: int,
     temperature: float,
     device: torch.device,
+    target_lengths: list[int] | None = None,
 ) -> list[str]:
+    if target_lengths is not None:
+        if len(target_lengths) != num_samples:
+            raise ValueError("target_lengths must have one entry per sample")
+        max_length = max(target_lengths)
     pad_id = TOKEN_TO_ID["<PAD>"]
     bos_id = TOKEN_TO_ID["<BOS>"]
     eos_id = TOKEN_TO_ID["<EOS>"]
@@ -72,6 +89,8 @@ def sample_sequences(
         logits = model(context)[:, -1, :] / temperature
         logits[:, pad_id] = -torch.inf
         logits[:, bos_id] = -torch.inf
+        if target_lengths is not None:
+            logits[:, eos_id] = -torch.inf
         next_tokens = torch.multinomial(torch.softmax(logits, dim=-1), num_samples=1)
         next_token_ids = next_tokens.squeeze(1).cpu().tolist()
 
@@ -82,13 +101,14 @@ def sample_sequences(
                 active[index] = False
             else:
                 sequences[index].append(total_tokens[token_id])
+                if target_lengths is not None and len(sequences[index]) == target_lengths[index]:
+                    active[index] = False
 
         context = torch.cat((context[:, 1:], next_tokens), dim=1)
         if not any(active):
             break
 
     return ["".join(sequence) for sequence in sequences]
-
 
 def main() -> None:
     args = parse_args()
@@ -122,12 +142,22 @@ def main() -> None:
 
     model = MLP(**model_config).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
+
+    target_lengths = None
+    if not args.free_length:
+        train_lengths = torch.tensor(
+            pd.read_csv(args.train_data)["sequence"].str.len().to_numpy()
+        )
+        picks = torch.randint(len(train_lengths), (args.num_samples,))
+        target_lengths = train_lengths[picks].tolist()
+
     sequences = sample_sequences(
         model,
         num_samples=args.num_samples,
         max_length=args.max_length,
         temperature=args.temperature,
         device=device,
+        target_lengths=target_lengths,
     )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -137,11 +167,15 @@ def main() -> None:
             "sequence": sequences,
         }
     ).to_csv(args.out, index=False)
-    ended_early = sum(len(sequence) < args.max_length for sequence in sequences)
+    lengths = [len(sequence) for sequence in sequences]
+    if args.free_length:
+        ended_early = sum(length < args.max_length for length in lengths)
+        length_note = f"{ended_early} ended with EOS before max length"
+    else:
+        length_note = f"lengths drawn from {args.train_data.name}"
     print(
-        f"Wrote {len(sequences)} sequences to {args.out}; "
-        f"{ended_early} ended with EOS before max length, "
-        f"mean length {sum(map(len, sequences)) / len(sequences):.1f}"
+        f"Wrote {len(sequences)} sequences to {args.out}; {length_note}, "
+        f"length min/mean/max {min(lengths)}/{sum(lengths) / len(lengths):.1f}/{max(lengths)}"
     )
 
 
