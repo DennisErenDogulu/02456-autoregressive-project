@@ -1,9 +1,10 @@
-"""Train the fixed-context MLP language model.
+"""Train an autoregressive protein sequence model.
 
 Run from the repository root with `uv run python train.py`.
 """
 
 import argparse
+import time
 from pathlib import Path
 
 import torch
@@ -11,7 +12,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from protgen.data import IGNORE_INDEX, ProteinDataset
-from protgen.models import MLP
+from protgen.models import GRU, MLP
 
 
 ROOT = Path(__file__).resolve().parent
@@ -19,16 +20,29 @@ ROOT = Path(__file__).resolve().parent
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--model",
+        choices=("mlp", "gru"),
+        default="mlp",
+        help="model architecture to train",
+    )
     parser.add_argument("--train-data", type=Path, default=ROOT / "data/train.csv")
     parser.add_argument("--val-data", type=Path, default=ROOT / "data/val.csv")
-    parser.add_argument(
-        "--checkpoint", type=Path, default=ROOT / "results/checkpoints/mlp.pt"
-    )
+    parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--patience", type=int, default=4)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--embedding-dim", type=int, default=32)
+    parser.add_argument("--hidden-dim", type=int)
+    parser.add_argument(
+        "--num-layers",
+        type=int,
+        default=1,
+        help="number of recurrent layers; only used with --model gru",
+    )
+    parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     args = parser.parse_args()
@@ -43,11 +57,21 @@ def parse_args() -> argparse.Namespace:
         parser.error("--learning-rate must be positive")
     if args.weight_decay < 0:
         parser.error("--weight-decay cannot be negative")
+    if args.embedding_dim < 1:
+        parser.error("--embedding-dim must be positive")
+    if args.hidden_dim is not None and args.hidden_dim < 1:
+        parser.error("--hidden-dim must be positive")
+    if args.num_layers < 1:
+        parser.error("--num-layers must be positive")
+    if not 0 <= args.dropout < 1:
+        parser.error("--dropout must be in [0, 1)")
+    if args.model == "mlp" and args.num_layers != 1:
+        parser.error("--num-layers can only be changed with --model gru")
     return args
 
 
 def run_epoch(
-    model: MLP,
+    model: MLP | GRU,
     batches: DataLoader,
     device: torch.device,
     optimizer: torch.optim.Optimizer | None = None,
@@ -135,11 +159,18 @@ def main() -> None:
     model_config = {
         "vocab_size": train_data.vocab_size,
         "pad_token_id": train_data.vocab["<PAD>"],
-        "embedding_dim": 32,
-        "hidden_dim": 256,
-        "dropout": 0.1,
+        "embedding_dim": args.embedding_dim,
+        "hidden_dim": args.hidden_dim or (256 if args.model == "mlp" else 128),
+        "dropout": args.dropout,
     }
-    model = MLP(**model_config).to(device)
+    if args.model == "mlp":
+        model = MLP(**model_config)
+    else:
+        gru_config = {**model_config, "num_layers": args.num_layers}
+        model = GRU(**gru_config)
+        model_config = gru_config
+    model = model.to(device)
+    checkpoint = args.checkpoint or ROOT / f"results/checkpoints/{args.model}.pt"
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -153,21 +184,25 @@ def main() -> None:
     epochs_without_improvement = 0
 
     for epoch in range(1, args.epochs + 1):
+        epoch_started = time.perf_counter()
         train_loss, train_accuracy = run_epoch(model, train_batches, device, optimizer)
         val_loss, val_accuracy = run_epoch(model, val_batches, device)
+        epoch_seconds = time.perf_counter() - epoch_started
         print(
             f"epoch {epoch:02d}/{args.epochs} "
             f"train_loss={train_loss:.4f} train_acc={train_accuracy:.1%} "
-            f"val_loss={val_loss:.4f} val_acc={val_accuracy:.1%}"
+            f"val_loss={val_loss:.4f} val_acc={val_accuracy:.1%} "
+            f"epoch_time={epoch_seconds:.1f}s"
         )
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch
             epochs_without_improvement = 0
-            args.checkpoint.parent.mkdir(parents=True, exist_ok=True)
+            checkpoint.parent.mkdir(parents=True, exist_ok=True)
             torch.save(
                 {
+                    "model_type": args.model,
                     "model_state_dict": model.state_dict(),
                     "model_config": model_config,
                     "epoch": epoch,
@@ -177,9 +212,10 @@ def main() -> None:
                         "learning_rate": args.learning_rate,
                         "weight_decay": args.weight_decay,
                         "seed": args.seed,
+                        "dropout": args.dropout,
                     },
                 },
-                args.checkpoint,
+                checkpoint,
             )
         else:
             epochs_without_improvement += 1
@@ -189,7 +225,7 @@ def main() -> None:
 
     print(
         f"best validation loss: {best_val_loss:.4f} at epoch {best_epoch}; "
-        f"checkpoint: {args.checkpoint}"
+        f"checkpoint: {checkpoint}"
     )
 
 

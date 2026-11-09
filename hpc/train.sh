@@ -19,5 +19,8 @@ set -eu
 cd "$(dirname "$0")/.."
 source hpc/env.sh   # uv on the PATH, caches off the home quota
 
-# Your training command, e.g.:
-# uv run python train.py
+uv run python train.py --model gru \
+  --embedding-dim 32 \
+  --hidden-dim 256 \
+  --num-layers 2 \
+  --dropout 0.1

@@ -241,6 +241,9 @@ hpc/logs/*
 # Training output; keep frozen split manifests in version control.
 runs/
 tests/
+!tests/
+tests/*
+!tests/test_gru.py
 .DS_Store
 
 .vscode/
