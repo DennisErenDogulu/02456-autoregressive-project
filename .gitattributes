@@ -1,3 +1,8 @@
+# Normalise line endings on commit: the repository stores LF for every text file,
+# whatever core.autocrlf is set to on the machine that committed. Without this, the
+# endings a file gets depend on who touched it last.
+* text=auto
+
 # shell scripts must keep LF endings, they run on the Linux cluster
 *.sh text eol=lf
 

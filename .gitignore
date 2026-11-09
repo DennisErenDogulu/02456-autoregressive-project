@@ -217,13 +217,16 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# evaluation outputs. results/ is ignored except for the mock sample set, which is checked in so
-# that the evaluation pipeline can be run the moment the environment works. An excluded directory
-# is never looked inside, so each level has to be re-included before the file can be.
+# Evaluation outputs are ignored, with one exception: the sample CSVs in results/sequences/.
+# mock_data.csv ships with the repository so that the evaluation pipeline can be run the moment
+# the environment works, and your own sample sets are a few hundred kilobytes of text each, so
+# committing them is how they travel to the cluster - see "On the cluster" in README.md. The
+# structures and tables under results/eval/ stay out. An excluded directory is never looked
+# inside, so each level has to be re-included before the files can be.
 results/*
 !results/sequences/
 results/sequences/*
-!results/sequences/mock_data.csv
+!results/sequences/*.csv
 
 # Job logs, but hpc/logs/ itself is kept: LSF opens a job's .out/.err before the script runs, so a
 # missing directory fails the job rather than being created by it, and it has to survive a clone.

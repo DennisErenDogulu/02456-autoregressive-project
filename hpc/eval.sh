@@ -3,7 +3,7 @@
 #BSUB -J eval
 #BSUB -n 4
 #BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -W 2:00
+#BSUB -W 0:30
 #BSUB -R "rusage[mem=8GB]"
 #BSUB -o hpc/logs/eval.out
 #BSUB -e hpc/logs/eval.err
@@ -20,19 +20,6 @@
 ##BSUB -B
 ##BSUB -N
 
-set -eu
-cd "$(dirname "$0")/.."
+source hpc/env.sh
 
-SETS="control_real control_shuffled mock_data"
-
-for NAME in $SETS; do
-    SAMPLES="results/sequences/$NAME.csv"
-    if [ ! -f "$SAMPLES" ]; then
-        echo "== $NAME: no $SAMPLES, skipping"
-        continue
-    fi
-    echo "== $NAME"
-    bash hpc/run_eval.sh "$SAMPLES"
-done
-
-echo "Done. Each set is in results/eval/<name>/"
+uv run --group eval python eval/eval.py --samples results/sequences/mock_data.csv --fold   
