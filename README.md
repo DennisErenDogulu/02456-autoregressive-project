@@ -4,15 +4,16 @@ A 02456 Deep Learning project. You build autoregressive sequence models - an MLP
 context, an RNN / LSTM / GRU, a transformer - on one frozen train/validation/test split of three
 protein families, and then measure what they generate.
 
-The repository mainly provides:
+The repository provides:
 
 - **the data and a dataset class** (`data/`, `src/protgen/data/`), so every model is fitted and
   compared on the same split and the same tokenisation;
+- **an MLP baseline and a GRU language model** (`src/protgen/models/`), trained and sampled with
+  `train.py` and `generate.py`;
 - **an evaluation pipeline** (`eval/`, `src/protgen/metrics/`), so "the samples look like
   proteins" becomes a number you can put in a table.
 
-**Remaining**: the models, the training loop and the sampling code. `src/protgen/models/`
-and `config/` are empty placeholders to be written.
+See the [models README](src/protgen/models/README.md) for model details, parameters, and commands.
 
 ## Get the code
 
@@ -138,10 +139,10 @@ above in a few cells.
 
 | Where | What goes there |
 |---|---|
-| `src/protgen/models/` | the architectures. `mlp.py` is an empty placeholder; add the recurrent and transformer models beside it. Anything you import as `protgen.models...` is picked up without reinstalling, because the package is installed in editable mode. |
+| `src/protgen/models/` | the MLP and GRU architectures. Add a transformer here if you choose to extend the comparison. See the [models README](src/protgen/models/README.md). |
 | `config/` | run configuration, if you want it. [Hydra](https://hydra.cc) is already a dependency, so `config/default.yaml` can grow into a config group tree; the file is empty, and nothing reads it yet. |
-| the project root | your `train.py` / `generate.py`, or notebooks, whichever you prefer. |
-| `hpc/train.sh` | the queue, walltime and memory for the training job, and the command that runs it. Fill in the command at the bottom. |
+| the project root | `train.py` trains either model; `generate.py` samples from its checkpoint. |
+| `hpc/train.sh` | the queue, walltime and memory for the GRU training job. |
 
 Note that the `eval/` scripts expect your generated sequences to stored as a CSV files at `results/sequences/<name>.csv` like the `mock_data.csv`.
 

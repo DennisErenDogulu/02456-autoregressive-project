@@ -1,4 +1,4 @@
-"""Sample protein sequences from a trained fixed-context MLP.
+"""Sample protein sequences from a trained autoregressive model.
 
 Run from the repository root with `uv run python generate.py`.
 """
@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 
 from protgen.data import total_tokens
-from protgen.models import MLP
+from protgen.models import GRU, MLP
 
 
 ROOT = Path(__file__).resolve().parent
@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint", type=Path, default=ROOT / "results/checkpoints/mlp.pt"
     )
-    parser.add_argument("--out", type=Path, default=ROOT / "results/sequences/mlp_samples.csv")
+    parser.add_argument("--out", type=Path)
     parser.add_argument("--train-data", type=Path, default=ROOT / "data/train.csv")
     parser.add_argument("--num-samples", type=positive_int, default=256)
     parser.add_argument(
@@ -60,7 +60,7 @@ def parse_args() -> argparse.Namespace:
 
 @torch.inference_mode()
 def sample_sequences(
-    model: MLP,
+    model: MLP | GRU,
     num_samples: int,
     max_length: int,
     temperature: float,
@@ -74,19 +74,29 @@ def sample_sequences(
     pad_id = TOKEN_TO_ID["<PAD>"]
     bos_id = TOKEN_TO_ID["<BOS>"]
     eos_id = TOKEN_TO_ID["<EOS>"]
-    context = torch.full(
-        (num_samples, model.context_length),
-        pad_id,
-        dtype=torch.long,
-        device=device,
-    )
-    context[:, -1] = bos_id
+    hidden = None
+    if isinstance(model, GRU):
+        next_input = torch.full(
+            (num_samples,), bos_id, dtype=torch.long, device=device
+        )
+    else:
+        context = torch.full(
+            (num_samples, model.context_length),
+            pad_id,
+            dtype=torch.long,
+            device=device,
+        )
+        context[:, -1] = bos_id
     active = [True] * num_samples
     sequences = [[] for _ in range(num_samples)]
 
     model.eval()
     for _ in range(max_length):
-        logits = model(context)[:, -1, :] / temperature
+        if isinstance(model, GRU):
+            logits, hidden = model.step(next_input, hidden)
+        else:
+            logits = model(context)[:, -1, :]
+        logits = logits / temperature
         logits[:, pad_id] = -torch.inf
         logits[:, bos_id] = -torch.inf
         if target_lengths is not None:
@@ -104,7 +114,10 @@ def sample_sequences(
                 if target_lengths is not None and len(sequences[index]) == target_lengths[index]:
                     active[index] = False
 
-        context = torch.cat((context[:, 1:], next_tokens), dim=1)
+        if isinstance(model, GRU):
+            next_input = next_tokens.squeeze(1)
+        else:
+            context = torch.cat((context[:, 1:], next_tokens), dim=1)
         if not any(active):
             break
 
@@ -116,7 +129,8 @@ def main() -> None:
         raise SystemExit("--device cuda requested, but CUDA is unavailable")
     if not args.checkpoint.is_file():
         raise SystemExit(
-            f"No checkpoint found at {args.checkpoint}; run `uv run python train.py` first"
+            f"No checkpoint found at {args.checkpoint}; train the model first with "
+            "`uv run python train.py --model mlp` or `--model gru`"
         )
 
     device = torch.device(
@@ -132,15 +146,24 @@ def main() -> None:
         "model_config",
         "model_state_dict",
     }.issubset(checkpoint):
-        raise ValueError(f"{args.checkpoint} is not a compatible MLP checkpoint")
+        raise ValueError(f"{args.checkpoint} is not a compatible model checkpoint")
 
+    model_type = checkpoint.get("model_type", "mlp")
     model_config = checkpoint["model_config"]
+    if model_type not in ("mlp", "gru"):
+        raise ValueError(f"Unsupported model type in checkpoint: {model_type!r}")
+    if not isinstance(model_config, dict):
+        raise ValueError(f"Invalid model configuration in {args.checkpoint}")
     if model_config.get("vocab_size") != len(total_tokens):
         raise ValueError("Checkpoint vocabulary size does not match the project vocabulary")
     if model_config.get("pad_token_id") != TOKEN_TO_ID["<PAD>"]:
         raise ValueError("Checkpoint padding token does not match the project vocabulary")
 
-    model = MLP(**model_config).to(device)
+    if model_type == "mlp":
+        model = MLP(**model_config)
+    else:
+        model = GRU(**model_config)
+    model = model.to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
     target_lengths = None
@@ -160,13 +183,14 @@ def main() -> None:
         target_lengths=target_lengths,
     )
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
+    out = args.out or ROOT / f"results/sequences/{model_type}_samples.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(
         {
-            "id": [f"mlp_{index:04d}" for index in range(len(sequences))],
+            "id": [f"{model_type}_{index:04d}" for index in range(len(sequences))],
             "sequence": sequences,
         }
-    ).to_csv(args.out, index=False)
+    ).to_csv(out, index=False)
     lengths = [len(sequence) for sequence in sequences]
     if args.free_length:
         ended_early = sum(length < args.max_length for length in lengths)
@@ -174,7 +198,7 @@ def main() -> None:
     else:
         length_note = f"lengths drawn from {args.train_data.name}"
     print(
-        f"Wrote {len(sequences)} sequences to {args.out}; {length_note}, "
+        f"Wrote {len(sequences)} sequences to {out}; {length_note}, "
         f"length min/mean/max {min(lengths)}/{sum(lengths) / len(lengths):.1f}/{max(lengths)}"
     )
 
