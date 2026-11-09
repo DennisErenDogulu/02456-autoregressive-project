@@ -1,0 +1,42 @@
+{
+  "sets": [
+    "real=results/eval/control_real",
+    "shuffled=results/eval/control_shuffled",
+    "mlp=results/eval/mlp_samples"
+  ],
+  "reference": null,
+  "out": "results/structure_comparison",
+  "panel_size": 25,
+  "panel_min_plddt": 70,
+  "diversity_sample": 50,
+  "min_length": 40,
+  "seed": 0,
+  "workers": 8,
+  "panel": [
+    "results/eval/control_real/pdb/real_69.pdb",
+    "results/eval/control_real/pdb/real_19.pdb",
+    "results/eval/control_real/pdb/real_49.pdb",
+    "results/eval/control_real/pdb/real_79.pdb",
+    "results/eval/control_real/pdb/real_199.pdb",
+    "results/eval/control_real/pdb/real_108.pdb",
+    "results/eval/control_real/pdb/real_159.pdb",
+    "results/eval/control_real/pdb/real_219.pdb",
+    "results/eval/control_real/pdb/real_213.pdb",
+    "results/eval/control_real/pdb/real_195.pdb",
+    "results/eval/control_real/pdb/real_86.pdb",
+    "results/eval/control_real/pdb/real_54.pdb",
+    "results/eval/control_real/pdb/real_65.pdb",
+    "results/eval/control_real/pdb/real_170.pdb",
+    "results/eval/control_real/pdb/real_211.pdb",
+    "results/eval/control_real/pdb/real_183.pdb",
+    "results/eval/control_real/pdb/real_236.pdb",
+    "results/eval/control_real/pdb/real_8.pdb",
+    "results/eval/control_real/pdb/real_149.pdb",
+    "results/eval/control_real/pdb/real_218.pdb",
+    "results/eval/control_real/pdb/real_130.pdb",
+    "results/eval/control_real/pdb/real_165.pdb",
+    "results/eval/control_real/pdb/real_80.pdb",
+    "results/eval/control_real/pdb/real_48.pdb",
+    "results/eval/control_real/pdb/real_120.pdb"
+  ]
+}
