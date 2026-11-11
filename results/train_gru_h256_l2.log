@@ -1,0 +1,27 @@
+device: cuda
+training sequences: 16020; validation sequences: 2001
+epoch 01/30 train_loss=2.5649 train_acc=22.3% val_loss=2.1049 val_acc=38.7% epoch_time=1.9s
+epoch 02/30 train_loss=1.8199 train_acc=45.9% val_loss=1.6994 val_acc=48.8% epoch_time=1.7s
+epoch 03/30 train_loss=1.5588 train_acc=53.1% val_loss=1.6013 val_acc=51.9% epoch_time=1.7s
+epoch 04/30 train_loss=1.4547 train_acc=56.2% val_loss=1.5481 val_acc=53.0% epoch_time=1.6s
+epoch 05/30 train_loss=1.3907 train_acc=58.1% val_loss=1.5178 val_acc=53.8% epoch_time=1.7s
+epoch 06/30 train_loss=1.3462 train_acc=59.4% val_loss=1.4928 val_acc=54.3% epoch_time=1.6s
+epoch 07/30 train_loss=1.3127 train_acc=60.4% val_loss=1.4814 val_acc=54.9% epoch_time=1.6s
+epoch 08/30 train_loss=1.2842 train_acc=61.2% val_loss=1.4697 val_acc=55.3% epoch_time=1.7s
+epoch 09/30 train_loss=1.2605 train_acc=61.9% val_loss=1.4612 val_acc=55.6% epoch_time=1.6s
+epoch 10/30 train_loss=1.2407 train_acc=62.5% val_loss=1.4487 val_acc=55.6% epoch_time=1.7s
+epoch 11/30 train_loss=1.2225 train_acc=63.0% val_loss=1.4437 val_acc=56.0% epoch_time=1.7s
+epoch 12/30 train_loss=1.2064 train_acc=63.5% val_loss=1.4406 val_acc=56.1% epoch_time=1.6s
+epoch 13/30 train_loss=1.1927 train_acc=63.9% val_loss=1.4356 val_acc=56.3% epoch_time=1.6s
+epoch 14/30 train_loss=1.1801 train_acc=64.2% val_loss=1.4331 val_acc=56.4% epoch_time=1.6s
+epoch 15/30 train_loss=1.1691 train_acc=64.6% val_loss=1.4349 val_acc=56.3% epoch_time=1.6s
+epoch 16/30 train_loss=1.1580 train_acc=64.9% val_loss=1.4310 val_acc=56.5% epoch_time=1.6s
+epoch 17/30 train_loss=1.1487 train_acc=65.1% val_loss=1.4261 val_acc=56.6% epoch_time=1.6s
+epoch 18/30 train_loss=1.1390 train_acc=65.4% val_loss=1.4213 val_acc=56.7% epoch_time=1.5s
+epoch 19/30 train_loss=1.1304 train_acc=65.7% val_loss=1.4208 val_acc=57.0% epoch_time=1.6s
+epoch 20/30 train_loss=1.1222 train_acc=65.9% val_loss=1.4281 val_acc=56.6% epoch_time=1.6s
+epoch 21/30 train_loss=1.1151 train_acc=66.1% val_loss=1.4339 val_acc=56.4% epoch_time=1.6s
+epoch 22/30 train_loss=1.1079 train_acc=66.4% val_loss=1.4303 val_acc=56.6% epoch_time=1.6s
+epoch 23/30 train_loss=1.1007 train_acc=66.6% val_loss=1.4281 val_acc=56.7% epoch_time=1.6s
+early stopping after epoch 23
+best validation loss: 1.4208 at epoch 19; checkpoint: results/checkpoints/gru_h256_l2.pt

@@ -1,0 +1,25 @@
+device: cuda
+training sequences: 16020; validation sequences: 2001
+epoch 01/30 train_loss=2.5591 train_acc=22.2% val_loss=2.0753 val_acc=39.0% epoch_time=2.5s
+epoch 02/30 train_loss=1.7988 train_acc=46.3% val_loss=1.6809 val_acc=48.8% epoch_time=2.2s
+epoch 03/30 train_loss=1.5383 train_acc=53.8% val_loss=1.5745 val_acc=52.1% epoch_time=2.2s
+epoch 04/30 train_loss=1.4327 train_acc=56.9% val_loss=1.5269 val_acc=53.2% epoch_time=2.2s
+epoch 05/30 train_loss=1.3668 train_acc=58.8% val_loss=1.5007 val_acc=53.9% epoch_time=2.2s
+epoch 06/30 train_loss=1.3203 train_acc=60.1% val_loss=1.4835 val_acc=54.5% epoch_time=2.2s
+epoch 07/30 train_loss=1.2837 train_acc=61.1% val_loss=1.4637 val_acc=55.3% epoch_time=2.2s
+epoch 08/30 train_loss=1.2550 train_acc=62.0% val_loss=1.4491 val_acc=55.6% epoch_time=2.2s
+epoch 09/30 train_loss=1.2292 train_acc=62.7% val_loss=1.4411 val_acc=55.8% epoch_time=2.2s
+epoch 10/30 train_loss=1.2081 train_acc=63.3% val_loss=1.4297 val_acc=56.4% epoch_time=2.2s
+epoch 11/30 train_loss=1.1883 train_acc=63.9% val_loss=1.4273 val_acc=56.3% epoch_time=2.2s
+epoch 12/30 train_loss=1.1713 train_acc=64.4% val_loss=1.4237 val_acc=56.5% epoch_time=2.2s
+epoch 13/30 train_loss=1.1566 train_acc=64.8% val_loss=1.4122 val_acc=56.9% epoch_time=2.2s
+epoch 14/30 train_loss=1.1426 train_acc=65.3% val_loss=1.4128 val_acc=56.9% epoch_time=2.2s
+epoch 15/30 train_loss=1.1308 train_acc=65.6% val_loss=1.4130 val_acc=57.1% epoch_time=2.2s
+epoch 16/30 train_loss=1.1184 train_acc=66.0% val_loss=1.4174 val_acc=57.1% epoch_time=2.2s
+epoch 17/30 train_loss=1.1074 train_acc=66.3% val_loss=1.4065 val_acc=57.1% epoch_time=2.2s
+epoch 18/30 train_loss=1.0972 train_acc=66.6% val_loss=1.4137 val_acc=57.0% epoch_time=2.2s
+epoch 19/30 train_loss=1.0882 train_acc=66.8% val_loss=1.4130 val_acc=57.2% epoch_time=2.2s
+epoch 20/30 train_loss=1.0809 train_acc=67.1% val_loss=1.4161 val_acc=57.0% epoch_time=2.2s
+epoch 21/30 train_loss=1.0719 train_acc=67.3% val_loss=1.4138 val_acc=56.9% epoch_time=2.2s
+early stopping after epoch 21
+best validation loss: 1.4065 at epoch 17; checkpoint: results/checkpoints/gru_h256_l3.pt
