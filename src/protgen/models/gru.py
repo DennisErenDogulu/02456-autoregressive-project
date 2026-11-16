@@ -3,8 +3,6 @@ from torch import nn
 
 
 class GRU(nn.Module):
-    """Autoregressive language model with a unidirectional GRU."""
-
     def __init__(
         self,
         vocab_size: int,
@@ -28,8 +26,7 @@ class GRU(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.output_projection = nn.Linear(hidden_dim, vocab_size)
 
-    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
-        """Return next-token logits aligned with each input position."""
+    def hidden_states(self, tokens: torch.Tensor) -> torch.Tensor:
         if tokens.ndim != 2:
             raise ValueError("tokens must have shape (batch, sequence_length)")
         if tokens.dtype != torch.long:
@@ -38,7 +35,10 @@ class GRU(nn.Module):
             raise ValueError("sequence_length must be greater than zero")
 
         outputs, _ = self.gru(self.embedding(tokens))
-        return self.output_projection(self.dropout(outputs))
+        return outputs
+
+    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        return self.output_projection(self.dropout(self.hidden_states(tokens)))
 
     def step(
         self,

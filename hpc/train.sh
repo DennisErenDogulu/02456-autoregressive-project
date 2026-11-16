@@ -19,8 +19,11 @@ set -eu
 cd "$(dirname "$0")/.."
 source hpc/env.sh   # uv on the PATH, caches off the home quota
 
+# The checkpoint is named explicitly so hpc/train_classifier.sh can point its
+# --backbone at the same file; train.py would otherwise write results/checkpoints/gru.pt.
 uv run python train.py --model gru \
   --embedding-dim 32 \
   --hidden-dim 256 \
   --num-layers 2 \
-  --dropout 0.1
+  --dropout 0.1 \
+  --checkpoint results/checkpoints/gru_h256_l2.pt

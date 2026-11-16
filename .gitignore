@@ -247,3 +247,4 @@ tests/*
 .DS_Store
 
 .vscode/
+!tests/test_classifier.py
