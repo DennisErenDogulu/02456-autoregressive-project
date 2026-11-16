@@ -9,18 +9,6 @@ from .gru import GRU
 
 
 class FamilyClassifier(nn.Module):
-    """Predict the protein family from one prefix summary of a frozen backbone.
-
-    The head reads a single hidden state - the backbone's summary of the residues
-    seen so far - and returns family logits. Training covers every prefix length
-    rather than only finished sequences, so the head stays usable on a sequence
-    that is still being written, which is what classifier guidance needs.
-
-    With ``head_hidden_dim=0`` the head is a plain linear probe, which is the
-    honest baseline for "how much family information does the frozen model already
-    carry?". Anything larger adds one hidden layer.
-    """
-
     def __init__(
         self,
         hidden_dim: int,
@@ -64,19 +52,6 @@ def load_family_classifier(
     path: str | Path,
     device: torch.device | str = "cpu",
 ) -> tuple[GRU, FamilyClassifier, dict[str, int]]:
-    """Rebuild the frozen backbone and its trained head from one checkpoint.
-
-    The checkpoint written by ``train_classifier.py`` is self-contained, so this
-    returns everything guided generation needs: the backbone, the head, and the
-    family-name-to-index mapping the head was trained against. Both models come
-    back in eval mode with gradients disabled.
-
-    Guidance use::
-
-        backbone, head, fam_to_idx = load_family_classifier(path, device)
-        logits, hidden = backbone.step(token, hidden)
-        family_logits = head(hidden[-1])          # p(family | prefix so far)
-    """
     checkpoint = torch.load(path, map_location=device, weights_only=True)
     required = {
         "head_state_dict",
@@ -99,51 +74,3 @@ def load_family_classifier(
     backbone = backbone.to(device).eval().requires_grad_(False)
     head = head.to(device).eval().requires_grad_(False)
     return backbone, head, checkpoint["fam_to_idx"]
-
-
-def candidate_family_logprobs(
-    backbone: GRU,
-    head: FamilyClassifier,
-    hidden: torch.Tensor,
-    candidates: torch.Tensor,
-) -> torch.Tensor:
-    """Score the family of every prefix that *could* come next.
-
-    Classifier guidance reweights the next token by how much it moves the sequence
-    toward the target family::
-
-        p(x_t = v | x_<t, y) ~ p(x_t = v | x_<t) * p(y | x_<t, v) ** lam
-
-    so the term added to the next-token logits has to be evaluated **per candidate
-    token**: it is ``log p(y | x_<t, v)``, not ``log p(y | x_<t)``. Scoring the
-    prefix alone gives one number per sequence, which shifts every logit equally
-    and leaves the softmax untouched - guidance that silently does nothing.
-
-    This advances the frozen backbone by one step for each candidate at once and
-    returns ``(batch, len(candidates), num_classes)`` log-probabilities. The
-    backbone's own state is not modified; the caller keeps advancing ``hidden``
-    with whichever token it actually samples.
-
-    Usage inside a sampling loop, for target family ``y`` and strength ``lam``::
-
-        logits, hidden = backbone.step(token, hidden)
-        scores = candidate_family_logprobs(backbone, head, hidden, candidates)
-        guided = logits[:, candidates] + lam * scores[:, :, y]
-    """
-    if hidden.ndim != 3:
-        raise ValueError("hidden must have shape (num_layers, batch, hidden_dim)")
-    if candidates.ndim != 1:
-        raise ValueError("candidates must have shape (num_candidates,)")
-    if candidates.dtype != torch.long:
-        raise TypeError("candidates must contain integer token IDs (torch.long)")
-
-    batch = hidden.size(1)
-    num_candidates = candidates.numel()
-    # Lay the pairs out as [(sequence 0, every candidate), (sequence 1, ...), ...]
-    # so that row b * num_candidates + j is sequence b extended by candidate j.
-    expanded = hidden.repeat_interleave(num_candidates, dim=1).contiguous()
-    tokens = candidates.repeat(batch)
-
-    _, next_hidden = backbone.step(tokens, expanded)
-    logits = head(next_hidden[-1])
-    return torch.log_softmax(logits, dim=-1).view(batch, num_candidates, -1)
