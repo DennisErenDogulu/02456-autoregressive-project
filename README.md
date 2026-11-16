@@ -146,6 +146,16 @@ above in a few cells.
 
 Note that the `eval/` scripts expect your generated sequences to stored as a CSV files at `results/sequences/<name>.csv` like the `mock_data.csv`.
 
+## Week 3: classifier-guided sampling
+
+`generate.py` supports `--target-family {AcyP,HPr,HU}`, `--guidance-strength`
+(alias `--lambda`, default `0`), and `--classifier-checkpoint`. Positive strength
+scores each full prefix with each eligible next token appended, using Person 1's
+saved classifier backbone and head. Zero strength needs no classifier or target.
+
+See [the guidance handover](docs/guidance.md) for exact generation commands,
+the classifier interface, repository trace, and verification results.
+
 ## Evaluating what you generate
 
 See **[`eval/README.md`](eval/README.md)**.

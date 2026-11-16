@@ -10,7 +10,8 @@ from pathlib import Path
 import pandas as pd
 import torch
 
-from protgen.data import total_tokens
+from protgen.data import FAMILIES, total_tokens
+from protgen.guidance import guide_logits, load_prefix_classifier, validate_guidance
 from protgen.models import GRU, MLP
 
 
@@ -29,6 +30,13 @@ def positive_float(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed) or parsed <= 0:
         raise argparse.ArgumentTypeError("must be a finite positive number")
+    return parsed
+
+
+def nonnegative_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 0:
+        raise argparse.ArgumentTypeError("must be a finite nonnegative number")
     return parsed
 
 
@@ -55,7 +63,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=positive_float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
-    return parser.parse_args()
+    parser.add_argument(
+        "--target-family", choices=FAMILIES,
+        help="family to favor when guidance strength is positive",
+    )
+    parser.add_argument(
+        "--guidance-strength", "--lambda", dest="guidance_strength",
+        type=nonnegative_float, default=0.0,
+        help="classifier guidance strength (default: 0, no classifier needed)",
+    )
+    parser.add_argument(
+        "--classifier-checkpoint", type=Path,
+        help="family-classifier checkpoint written by train_classifier.py",
+    )
+    args = parser.parse_args()
+    if args.guidance_strength > 0 and (
+        not args.target_family or not args.classifier_checkpoint
+    ):
+        parser.error("positive guidance requires --target-family and --classifier-checkpoint")
+    return args
 
 
 @torch.inference_mode()
@@ -66,7 +92,23 @@ def sample_sequences(
     temperature: float,
     device: torch.device,
     target_lengths: list[int] | None = None,
+    *,
+    target_family: str | None = None,
+    guidance_strength: float = 0.0,
+    classifier: torch.nn.Module | None = None,
 ) -> list[str]:
+    """Sample with optional prefix-plus-candidate family guidance.
+
+    The classifier consumes full BOS-prefixed token sequences and returns raw
+    family logits, with columns identified by its ``fam_to_idx`` attribute.
+    Zero strength uses the original generator probabilities and needs no head.
+    """
+    validate_guidance(guidance_strength, target_family, classifier)
+    if guidance_strength > 0:
+        classifier.eval()
+        prefixes = torch.full(
+            (num_samples, 1), TOKEN_TO_ID["<BOS>"], dtype=torch.long, device=device
+        )
     if target_lengths is not None:
         if len(target_lengths) != num_samples:
             raise ValueError("target_lengths must have one entry per sample")
@@ -101,7 +143,16 @@ def sample_sequences(
         logits[:, bos_id] = -torch.inf
         if target_lengths is not None:
             logits[:, eos_id] = -torch.inf
+        if guidance_strength > 0:
+            # Apply the classifier term after generator temperature and masking;
+            # the original softmax below normalizes over the eligible tokens.
+            logits = guide_logits(
+                logits, prefixes, classifier, target_family, guidance_strength,
+                torch.tensor(active, dtype=torch.bool, device=device),
+            )
         next_tokens = torch.multinomial(torch.softmax(logits, dim=-1), num_samples=1)
+        if guidance_strength > 0:
+            prefixes = torch.cat((prefixes, next_tokens), dim=1)
         next_token_ids = next_tokens.squeeze(1).cpu().tolist()
 
         for index, token_id in enumerate(next_token_ids):
@@ -166,6 +217,10 @@ def main() -> None:
     model = model.to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
+    classifier = None
+    if args.guidance_strength > 0:
+        classifier = load_prefix_classifier(args.classifier_checkpoint, device)
+
     target_lengths = None
     if not args.free_length:
         train_lengths = torch.tensor(
@@ -181,6 +236,9 @@ def main() -> None:
         temperature=args.temperature,
         device=device,
         target_lengths=target_lengths,
+        target_family=args.target_family,
+        guidance_strength=args.guidance_strength,
+        classifier=classifier,
     )
 
     out = args.out or ROOT / f"results/sequences/{model_type}_samples.csv"

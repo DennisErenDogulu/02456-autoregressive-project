@@ -253,3 +253,5 @@ tests/*
 results/checkpoints/*
 !results/checkpoints/gru_h256_l2.pt
 !results/checkpoints/family_classifier.pt
+
+!tests/test_guidance.py
