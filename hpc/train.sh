@@ -15,8 +15,8 @@
 ##BSUB -B
 ##BSUB -N
 
-set -eu
-cd "$(dirname "$0")/.."
+#set -eu
+#cd "$(dirname "$0")/.."
 source hpc/env.sh   # uv on the PATH, caches off the home quota
 
 # The checkpoint is named explicitly so hpc/train_classifier.sh can point its
