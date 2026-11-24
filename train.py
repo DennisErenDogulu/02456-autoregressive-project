@@ -1,8 +1,3 @@
-"""Train an autoregressive protein sequence model.
-
-Run from the repository root with `uv run python train.py`.
-"""
-
 import argparse
 import time
 from pathlib import Path
