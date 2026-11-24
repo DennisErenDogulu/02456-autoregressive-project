@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from protgen.data import IGNORE_INDEX, ProteinDataset
-from protgen.models import GRU, MLP
+from protgen.models import GRU, MLP, ConditionalGRU
 
 
 ROOT = Path(__file__).resolve().parent
@@ -22,9 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--model",
-        choices=("mlp", "gru"),
+        choices=("mlp", "gru", "cgru"),
         default="mlp",
-        help="model architecture to train",
     )
     parser.add_argument("--train-data", type=Path, default=ROOT / "data/train.csv")
     parser.add_argument("--val-data", type=Path, default=ROOT / "data/val.csv")
@@ -40,9 +39,13 @@ def parse_args() -> argparse.Namespace:
         "--num-layers",
         type=int,
         default=1,
-        help="number of recurrent layers; only used with --model gru",
     )
     parser.add_argument("--dropout", type=float, default=0.1)
+    parser.add_argument(
+        "--label-dropout",
+        type=float,
+        default=0.15,
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     args = parser.parse_args()
@@ -66,24 +69,30 @@ def parse_args() -> argparse.Namespace:
     if not 0 <= args.dropout < 1:
         parser.error("--dropout must be in [0, 1)")
     if args.model == "mlp" and args.num_layers != 1:
-        parser.error("--num-layers can only be changed with --model gru")
+        parser.error("--num-layers can only be changed with --model gru or cgru")
+    if not 0 <= args.label_dropout <= 1:
+        parser.error("--label-dropout must be in [0, 1]")
     return args
 
 
 def run_epoch(
-    model: MLP | GRU,
+    model: MLP | GRU | ConditionalGRU,
     batches: DataLoader,
     device: torch.device,
     optimizer: torch.optim.Optimizer | None = None,
+    label_dropout: float = 0.0,
+    force_null: bool = False,
 ) -> tuple[float, float]:
+
     training = optimizer is not None
     model.train(training)
+    conditional = isinstance(model, ConditionalGRU)
     total_loss = 0.0
     total_tokens = 0
     correct_tokens = 0
 
     with torch.set_grad_enabled(training):
-        for tokens, targets, _, lengths in batches:
+        for tokens, targets, labels, lengths in batches:
             max_residue_length = int(lengths.max().item())
             tokens = tokens[:, : max_residue_length + 1].to(
                 device, non_blocking=device.type == "cuda"
@@ -99,7 +108,15 @@ def run_epoch(
             if training:
                 optimizer.zero_grad(set_to_none=True)
 
-            logits = model(tokens)
+            if conditional:
+                labels = labels.to(device, non_blocking=device.type == "cuda")
+                if force_null:
+                    labels = model.null_labels(labels.size(0), device)
+                else:
+                    labels = model.drop_labels(labels, label_dropout)
+                logits = model(tokens, labels)
+            else:
+                logits = model(tokens)
             loss_sum = F.cross_entropy(
                 logits.reshape(-1, logits.size(-1)),
                 targets.reshape(-1),
@@ -165,10 +182,19 @@ def main() -> None:
     }
     if args.model == "mlp":
         model = MLP(**model_config)
-    else:
+    elif args.model == "gru":
         gru_config = {**model_config, "num_layers": args.num_layers}
         model = GRU(**gru_config)
         model_config = gru_config
+    else:
+        cgru_config = {
+            **model_config,
+            "num_layers": args.num_layers,
+            "num_classes": len(train_data.fam_to_idx),
+        }
+        model = ConditionalGRU(**cgru_config)
+        model_config = cgru_config
+    conditional = isinstance(model, ConditionalGRU)
     model = model.to(device)
     checkpoint = args.checkpoint or ROOT / f"results/checkpoints/{args.model}.pt"
     optimizer = torch.optim.AdamW(
@@ -179,20 +205,35 @@ def main() -> None:
 
     print(f"device: {device}")
     print(f"training sequences: {len(train_data)}; validation sequences: {len(val_data)}")
+    if conditional:
+        print(
+            f"families: {train_data.fam_to_idx}; null label: {model.null_label}; "
+            f"label dropout: {args.label_dropout}"
+        )
     best_val_loss = float("inf")
     best_epoch = 0
     epochs_without_improvement = 0
 
     for epoch in range(1, args.epochs + 1):
         epoch_started = time.perf_counter()
-        train_loss, train_accuracy = run_epoch(model, train_batches, device, optimizer)
+        train_loss, train_accuracy = run_epoch(
+            model, train_batches, device, optimizer, label_dropout=args.label_dropout
+        )
         val_loss, val_accuracy = run_epoch(model, val_batches, device)
+        # Both halves of what guidance interpolates, so a run shows whether the
+        # unconditional branch was actually learned rather than ignored.
+        null_val_loss = (
+            run_epoch(model, val_batches, device, force_null=True)[0]
+            if conditional
+            else None
+        )
         epoch_seconds = time.perf_counter() - epoch_started
         print(
             f"epoch {epoch:02d}/{args.epochs} "
             f"train_loss={train_loss:.4f} train_acc={train_accuracy:.1%} "
             f"val_loss={val_loss:.4f} val_acc={val_accuracy:.1%} "
-            f"epoch_time={epoch_seconds:.1f}s"
+            + (f"null_val_loss={null_val_loss:.4f} " if conditional else "")
+            + f"epoch_time={epoch_seconds:.1f}s"
         )
 
         if val_loss < best_val_loss:
@@ -200,23 +241,29 @@ def main() -> None:
             best_epoch = epoch
             epochs_without_improvement = 0
             checkpoint.parent.mkdir(parents=True, exist_ok=True)
-            torch.save(
-                {
-                    "model_type": args.model,
-                    "model_state_dict": model.state_dict(),
-                    "model_config": model_config,
-                    "epoch": epoch,
-                    "val_loss": val_loss,
-                    "training_config": {
-                        "batch_size": args.batch_size,
-                        "learning_rate": args.learning_rate,
-                        "weight_decay": args.weight_decay,
-                        "seed": args.seed,
-                        "dropout": args.dropout,
-                    },
+            state = {
+                "model_type": args.model,
+                "model_state_dict": model.state_dict(),
+                "model_config": model_config,
+                "epoch": epoch,
+                "val_loss": val_loss,
+                "training_config": {
+                    "batch_size": args.batch_size,
+                    "learning_rate": args.learning_rate,
+                    "weight_decay": args.weight_decay,
+                    "seed": args.seed,
+                    "dropout": args.dropout,
                 },
-                checkpoint,
-            )
+            }
+            if conditional:
+                # Sampling has to agree with training on which index means "no
+                # label" and which index is which family, so both travel with
+                # the weights instead of being remembered separately.
+                state["null_label"] = model.null_label
+                state["fam_to_idx"] = train_data.fam_to_idx
+                state["null_val_loss"] = null_val_loss
+                state["training_config"]["label_dropout"] = args.label_dropout
+            torch.save(state, checkpoint)
         else:
             epochs_without_improvement += 1
             if epochs_without_improvement >= args.patience:
